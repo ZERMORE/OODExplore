@@ -6,22 +6,32 @@
 
 **交付状态：代码已构建；按用户要求未在本机运行测试、加载模型或执行实验。** 下列检查和命令供服务器执行；尚无实测效果或显存结论。
 
+服务器首次克隆和日常 Git 同步见 [服务器部署与 Git 同步指引](docs/server-sync.md)。代码目录固定为 `/projects/OODexplore`（注意大小写），大文件根目录默认为 `/wdl/data`。
+
 ## 1. 服务器安装（Conda）
 
-建议 Linux，使用独立的 Conda 环境 `oodexplore`（Python 3.10）。目录建议：
+建议 Linux，使用独立的 Conda 环境（Python 3.10）。服务器目录约定：
 
 ```text
-methods/
-├── OODmethod/                 # 已验证的复现代码，只读引用
-│   └── ood_repro/scoring.py
-└── OODExplore/                # 本目录
+/projects/OODexplore/          # 本项目 Git 仓库
+/projects/OODmethod/           # 已验证复现代码，只读引用，须另行同步
+/wdl/data/
+├── huggingface/              # hub 权重、数据原始下载、datasets Arrow、Xet 缓存
+├── oodexplore/
+│   ├── datasets/scienceqa/    # 固定子集 JSONL 与图片
+│   └── runs/                 # 逐 token 结果、图表、分析
+├── conda/                    # 环境与包缓存
+├── cache/                    # pip、torch 缓存
+└── tmp/                      # 安装/下载临时文件
 ```
 
 在服务器的 OODExplore 项目根目录内，先创建并激活环境：
 
 ```bash
-conda env create -f environment.yml
-conda activate oodexplore
+cd /projects/OODexplore
+source scripts/server_env.sh
+conda env create --prefix /wdl/data/conda/envs/oodexplore -f environment.yml
+conda activate /wdl/data/conda/envs/oodexplore
 ```
 
 环境文件提供 Python、pip、构建工具及 pytest；PyTorch 按服务器驱动选择后安装，其他项目依赖由 `pyproject.toml` 管理，避免重复维护两套依赖列表。
@@ -37,14 +47,15 @@ python -m ood_explore show-config --config configs/qwen3b.json
 
 若服务器需要其他 CUDA 构建，请使用 [PyTorch 官方版本安装说明](https://pytorch.org/get-started/previous-versions/#v260) 中对应的命令，并保持 torch 与 torchvision 版本配套；这里没有把服务器的 CUDA 版本写死在 Conda 文件中。
 
-后续每次登录服务器，运行实验前先执行 `conda activate oodexplore`。环境已经创建时不必再次 `conda env create`。可用 `conda env export --no-builds > environment.resolved.yml` 留存安装后的环境信息。
+后续每次登录服务器，先进入 `/projects/OODexplore`，执行 `source scripts/server_env.sh` 和 `conda activate /wdl/data/conda/envs/oodexplore`。环境已经创建时不必再次 `conda env create`。可用 `conda env export --no-builds > /wdl/data/oodexplore-environment.resolved.yml` 留存安装后的环境信息。
 
 集群批处理脚本中通常需要先初始化 Conda，再激活环境：
 
 ```bash
 source "$(conda info --base)/etc/profile.d/conda.sh"
-conda activate oodexplore
-# 先切换到服务器上的 OODExplore 项目根目录
+cd /projects/OODexplore
+source scripts/server_env.sh
+conda activate /wdl/data/conda/envs/oodexplore
 bash scripts/run_server.sh
 ```
 
@@ -52,7 +63,11 @@ bash scripts/run_server.sh
 
 本项目固定 `transformers==4.51.3`，与旧复现环境分离。**不要将 OODmethod 连同其旧 Transformers 依赖安装进本环境**：这里只按文件路径导入其原有评分模块。也不会写入 OODmethod。
 
-`oodmethod_dir` 相对 **OODExplore 项目根目录**解析，默认 `../OODmethod`。不使用同级目录布局时在 JSON 中填写服务器绝对路径。`model` 可以填写已下载的本地模型路径；离线运行前先准备好权重、Processor 和数据缓存。模型首次下载需要网络与足够磁盘。
+`oodmethod_dir` 默认 `/projects/OODmethod`；该复现仓库须另行同步，不会随本项目自动下载。若服务器上已有其他路径，请修改 JSON；相对路径相对本项目根目录解析。`model` 可填写 `/wdl/data` 内已下载的本地模型路径；默认使用 Hub ID，自动下载到 `/wdl/data/huggingface/hub`。离线运行前先准备好权重、Processor 和数据缓存。
+
+程序在导入 Hugging Face 库之前配置缓存目录，模型和数据加载还显式传入 `cache_dir`。`source scripts/server_env.sh` 同时配置 Conda、pip、torch 和临时目录，手动下载/安装前也应执行。代码不会迁移或删除已有缓存；旧数据需要另行复制或在新目录重新准备。
+
+可通过环境变量 `OODEXPLORE_DATA_ROOT` 更换大文件根目录，或使用全局参数（放在子命令之前）：`python -m ood_explore --data-root /other/disk prepare`。显式 `--output` 仍优先控制产物位置；运行脚本的默认数据和输出路径随根目录变化。
 
 默认 `device_map=auto`、BF16、SDPA。硬件不支持 BF16 时改为 `float16`；实际显存由图像分辨率、输出长度和分配方式决定。`max_pixels` 限制图像 token 开销；不能在 dev/test 之间更换设置。模型、数据的 `revision` 可换为固定 commit；运行清单会记录实际解析的模型 commit、依赖版本及评分代码 SHA256。
 
@@ -67,7 +82,7 @@ python -m pytest -q
 ## 3. 准备固定数据
 
 ```bash
-python -m ood_explore prepare --output data/scienceqa --dev-count 100 --test-count 500 --seed 42
+python -m ood_explore prepare --dev-count 100 --test-count 500 --seed 42
 ```
 
 从 `derek-thomas/ScienceQA` 的官方 validation/test 分别抽取带图题。按 RGB 像素 hash 去重（开发集优先），不根据模型对错筛选。输出相对路径的 PNG、`dev.jsonl`、`test.jsonl`、来源与抽样清单。
@@ -77,7 +92,7 @@ python -m ood_explore prepare --output data/scienceqa --dev-count 100 --test-cou
 ## 4. 十题真实 VLM 冒烟检查
 
 ```bash
-python -m ood_explore run --config configs/qwen3b.json --data data/scienceqa/dev.jsonl --output outputs/smoke --limit 10
+python -m ood_explore run --config configs/qwen3b.json --data /wdl/data/oodexplore/datasets/scienceqa/dev.jsonl --output /wdl/data/oodexplore/runs/smoke --limit 10
 ```
 
 默认前 10 题额外执行原图强制重放，比较相同位置的 NCI、fDBD、生成 token log 概率及负熵，误差超过容差即终止；每道题的检查结果存入 `verification`。这是新 VLM 适配检查，不重跑原论文实验。还应目视查看输出是否为正确的图片/选项、解释格式和完整答案。
@@ -89,17 +104,17 @@ python -m ood_explore run --config configs/qwen3b.json --data data/scienceqa/dev
 ## 5. 正式实验与续跑
 
 ```bash
-python -m ood_explore run --config configs/qwen3b.json --data data/scienceqa/dev.jsonl --output outputs/dev
-python -m ood_explore run --config configs/qwen3b.json --data data/scienceqa/test.jsonl --output outputs/test
-python -m ood_explore analyze --dev outputs/dev/predictions.jsonl --test outputs/test/predictions.jsonl --output outputs/analysis
+python -m ood_explore run --config configs/qwen3b.json --data /wdl/data/oodexplore/datasets/scienceqa/dev.jsonl --output /wdl/data/oodexplore/runs/main/dev
+python -m ood_explore run --config configs/qwen3b.json --data /wdl/data/oodexplore/datasets/scienceqa/test.jsonl --output /wdl/data/oodexplore/runs/main/test
+python -m ood_explore analyze --dev /wdl/data/oodexplore/runs/main/dev/predictions.jsonl --test /wdl/data/oodexplore/runs/main/test/predictions.jsonl --output /wdl/data/oodexplore/runs/main/analysis
 ```
 
-激活 `oodexplore` 环境后，也可执行 `bash scripts/run_server.sh`，自动依次完成准备、dev、test 和分析；输出位置可通过脚本参数指定。该脚本使用当前环境的 Python，不自动切换环境、安装依赖或提交集群任务。
+激活 Conda 环境后，也可执行 `bash scripts/run_server.sh`，自动依次完成准备、dev、test 和分析；默认数据目录 `/wdl/data/oodexplore/datasets/scienceqa`，输出目录 `/wdl/data/oodexplore/runs/main`，可通过脚本参数指定。该脚本使用当前环境的 Python，不自动切换环境、安装依赖或提交集群任务。
 
 中断后用**相同命令追加 `--resume`**：
 
 ```bash
-python -m ood_explore run --config configs/qwen3b.json --data data/scienceqa/test.jsonl --output outputs/test --resume
+python -m ood_explore run --config configs/qwen3b.json --data /wdl/data/oodexplore/datasets/scienceqa/test.jsonl --output /wdl/data/oodexplore/runs/main/test --resume
 ```
 
 每条完成后立即写入 JSONL；只接受原数据顺序的完整前缀。配置、代码、数据、图像、评分模块或依赖版本变化会拒绝续跑，避免混合实验。异常行不静默跳过。若进程恰在写入时被杀死导致最后一行损坏，需先备份并人工移除不完整的最后一行再续跑。请勿同时向同一输出目录启动两个进程。

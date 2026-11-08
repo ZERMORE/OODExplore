@@ -24,6 +24,8 @@ def image_key(image):
 
 def prepare(output, *, dataset="derek-thomas/ScienceQA", revision="main", dev_count=100,
             test_count=500, seed=42):
+    from .storage import configure_storage
+    root = configure_storage()
     from datasets import load_dataset
 
     output = Path(output).resolve()
@@ -33,7 +35,7 @@ def prepare(output, *, dataset="derek-thomas/ScienceQA", revision="main", dev_co
         raise ValueError("dev_count >= 1; test_count >= 0 (0 means all)")
     output.mkdir(parents=True, exist_ok=True)
     (output / "images").mkdir()
-    data = load_dataset(dataset, revision=revision)
+    data = load_dataset(dataset, revision=revision, cache_dir=str(root / "huggingface/datasets"))
     rng = random.Random(seed)
     used, counts, fingerprints = set(), {}, {}
     for split, source_split, limit in (("dev", "validation", dev_count), ("test", "test", test_count)):

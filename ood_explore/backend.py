@@ -68,13 +68,17 @@ class TraceProcessor:
 
 class QwenBackend:
     def __init__(self, config):
+        from .storage import configure_storage
+        root = configure_storage(config.get("data_root"))
         from transformers import AutoProcessor, Qwen2_5_VLForConditionalGeneration
 
         self.config = config
         torch.manual_seed(config["seed"])
         self.processor = AutoProcessor.from_pretrained(config["model"], revision=config["revision"],
+            cache_dir=str(root / "huggingface/hub"),
             min_pixels=config["min_pixels"], max_pixels=config["max_pixels"])
         self.model = Qwen2_5_VLForConditionalGeneration.from_pretrained(config["model"],
+            cache_dir=str(root / "huggingface/hub"),
             revision=config["revision"], torch_dtype=getattr(torch, config["dtype"]),
             device_map=config["device_map"], attn_implementation=config["attention"]).eval()
         head = self.model.get_output_embeddings()

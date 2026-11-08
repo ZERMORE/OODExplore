@@ -2,13 +2,15 @@ import argparse
 import json
 
 from .io import resolve_config
+from .storage import configure_storage
 
 
 def main():
     parser = argparse.ArgumentParser(description="Route C: VLM geometry + visual sensitivity")
+    parser.add_argument("--data-root", help="Large-file root (default: OODEXPLORE_DATA_ROOT or /wdl/data)")
     sub = parser.add_subparsers(dest="command", required=True)
     prepare = sub.add_parser("prepare", help="Download and freeze unique-image ScienceQA subsets")
-    prepare.add_argument("--output", required=True)
+    prepare.add_argument("--output", help="Default: <data-root>/oodexplore/datasets/scienceqa")
     prepare.add_argument("--dataset", default="derek-thomas/ScienceQA")
     prepare.add_argument("--revision", default="main")
     prepare.add_argument("--dev-count", type=int, default=100)
@@ -31,12 +33,15 @@ def main():
     inspect.add_argument("--config", required=True)
     args = vars(parser.parse_args())
     command = args.pop("command")
+    root = configure_storage(args.pop("data_root"))
     if command == "prepare":
         from .data import prepare as action
+        args["output"] = args["output"] or str(root / "oodexplore/datasets/scienceqa")
         action(**args)
     elif command == "run":
         from .pipeline import collect
         config = resolve_config(args.pop("config"))
+        config["data_root"] = str(root)
         args["data_path"] = args.pop("data")
         collect(config, **args)
     elif command == "analyze":
@@ -44,4 +49,4 @@ def main():
         args["dev_path"], args["test_path"] = args.pop("dev"), args.pop("test")
         analyze(**args)
     else:
-        print(json.dumps(resolve_config(args["config"]), indent=2, ensure_ascii=False))
+        print(json.dumps({**resolve_config(args["config"]), "data_root": str(root)}, indent=2, ensure_ascii=False))
