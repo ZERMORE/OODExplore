@@ -7,7 +7,7 @@ from .storage import configure_storage
 
 def main():
     parser = argparse.ArgumentParser(description="Route C: VLM geometry + visual sensitivity")
-    parser.add_argument("--data-root", help="Large-file root (default: OODEXPLORE_DATA_ROOT or /wdl/data)")
+    parser.add_argument("--data-root", help="Large-file root (default: OODEXPLORE_DATA_ROOT or ~/wdl/data)")
     sub = parser.add_subparsers(dest="command", required=True)
     prepare = sub.add_parser("prepare", help="Download and freeze unique-image ScienceQA subsets")
     prepare.add_argument("--output", help="Default: <data-root>/oodexplore/datasets/scienceqa")
@@ -33,7 +33,10 @@ def main():
     inspect.add_argument("--config", required=True)
     args = vars(parser.parse_args())
     command = args.pop("command")
-    root = configure_storage(args.pop("data_root"))
+    try:
+        root = configure_storage(args.pop("data_root"), create=command != "show-config")
+    except RuntimeError as exc:
+        parser.error(str(exc))
     if command == "prepare":
         from .data import prepare as action
         args["output"] = args["output"] or str(root / "oodexplore/datasets/scienceqa")

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Source this file before Conda/pip installation or manual HF downloads.
-export OODEXPLORE_DATA_ROOT="${OODEXPLORE_DATA_ROOT:-/wdl/data}"
+export OODEXPLORE_DATA_ROOT="${OODEXPLORE_DATA_ROOT:-$HOME/wdl/data}"
 export HF_HOME="$OODEXPLORE_DATA_ROOT/huggingface"
 export HF_HUB_CACHE="$HF_HOME/hub"
 export HF_DATASETS_CACHE="$HF_HOME/datasets"

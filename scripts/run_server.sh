@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Run after: conda activate /wdl/data/conda/envs/oodexplore
+# Run after activating your oodexplore Conda environment.
 # Usage: bash scripts/run_server.sh [config] [data-dir] [output-dir]
 project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$project_dir"

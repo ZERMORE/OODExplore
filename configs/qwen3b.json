@@ -1,7 +1,7 @@
 {
   "model": "Qwen/Qwen2.5-VL-3B-Instruct",
   "revision": "main",
-  "oodmethod_dir": "/projects/OODmethod",
+  "oodmethod_dir": "../OODmethod",
   "dtype": "bfloat16",
   "device_map": "auto",
   "attention": "sdpa",
