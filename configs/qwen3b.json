@@ -3,7 +3,7 @@
   "revision": "main",
   "oodmethod_dir": "../OODmethod",
   "dtype": "bfloat16",
-  "device_map": "auto",
+  "device_map": "cuda:0",
   "attention": "sdpa",
   "min_pixels": 3136,
   "max_pixels": 401408,

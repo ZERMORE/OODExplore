@@ -21,6 +21,7 @@ def test_native_generation_replay_uses_identical_history_and_raw_head():
     backend.config = {"max_new_tokens": 4}
 
     class ToyScorer:
+        weight = model.get_output_embeddings().weight
         def score(self, z, raw, token):
             expected = model.get_output_embeddings().weight.float() @ z.float()
             assert torch.allclose(raw, expected, atol=1e-5)

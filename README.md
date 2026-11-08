@@ -79,7 +79,17 @@ python -m ood_explore show-config --config configs/qwen3b.json
 
 已有的 `conda activate oodexplore` 环境可以继续使用，无须因缓存路径变化重建或迁移。上面的 Conda prefix 示例仅供新建环境时使用。代码目录 `~/projects/OODexplore` 对应 `/home/wxh/projects/OODexplore`，数据目录 `~/wdl/data` 对应 `/home/wxh/wdl/data`。
 
-默认 `device_map=auto`、BF16、SDPA。硬件不支持 BF16 时改为 `float16`；实际显存由图像分辨率、输出长度和分配方式决定。`max_pixels` 限制图像 token 开销；不能在 dev/test 之间更换设置。模型、数据的 `revision` 可换为固定 commit；运行清单会记录实际解析的模型 commit、依赖版本及评分代码 SHA256。
+默认 `device_map="cuda:0"`、BF16、SDPA，使用单张可见 GPU；不默认把 3B 模型分配到共享服务器的多张卡。硬件不支持 BF16 时改为 `float16`；实际显存由图像分辨率、输出长度和分配方式决定。`max_pixels` 限制图像 token 开销；不能在 dev/test 之间更换设置。模型、数据的 `revision` 可换为固定 commit；运行清单会记录实际解析的模型 commit、依赖版本及评分代码 SHA256。
+
+例如要使用物理 5 号 GPU，在启动 Python 前设置可见设备：
+
+```bash
+CUDA_VISIBLE_DEVICES=5 python -m ood_explore run --config configs/qwen3b.json --data ~/wdl/data/oodexplore/datasets/scienceqa/dev.jsonl --output ~/wdl/data/oodexplore/runs/smoke-single-gpu --limit 10
+```
+
+该进程里的 `cuda:0` 对应物理 5 号卡，配置无需改为 `cuda:5`。正式脚本可用 `CUDA_VISIBLE_DEVICES=5 bash scripts/run_server.sh`。如需自动分配多卡，可显式改回 `auto`；评分前会将隐藏状态和原始 logits 对齐到评分器权重所在设备。[Accelerate 设备分配说明](https://huggingface.co/docs/accelerate/en/usage_guides/big_modeling)
+
+若旧 smoke 因设备错误失败，修复后使用新的输出目录；代码/配置改变会触发原目录的续跑一致性保护。已下载的模型权重会继续从缓存读取。image processor 显式使用 `use_fast=False` 保持预处理方式一致，原先的 slow processor 提示不是此次异常原因。
 
 ## 2. 服务器检查（不下载模型）
 
@@ -106,6 +116,8 @@ python -m ood_explore run --config configs/qwen3b.json --data /home/wxh/wdl/data
 ```
 
 默认前 10 题额外执行原图强制重放，比较相同位置的 NCI、fDBD、生成 token log 概率及负熵，误差超过容差即终止；每道题的检查结果存入 `verification`。这是新 VLM 适配检查，不重跑原论文实验。还应目视查看输出是否为正确的图片/选项、解释格式和完整答案。
+
+重放一致只说明评分对齐，仍须检查 `parsed_answer`、`eligible` 和 `stop_reason`。建议十题中至少九题可解析且未截断后再扩大规模；这是开发阶段的格式检查标准，不是准确率门槛。提示词已去掉容易被模型照抄的 `<option letter>` 占位符，改用明确格式示例，并将解释限制为至多 80 个词。若升级提示词，请用新输出目录重新跑 smoke；数据子集不必重新下载或抽样。
 
 生成和重放都通过原生 `generate` 管理多模态位置与 KV cache。hook 直接读取 **LM head 的输入与原始输出**，不是被 logits processor 修改过的分布。灰图通过自定义 processor 强制相同 token 序列；每次调用重新建立 cache。没有 `output_hidden_states=True` 或保存完整词表分布。
 

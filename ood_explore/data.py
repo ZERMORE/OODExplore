@@ -8,13 +8,16 @@ from PIL import Image
 from .io import write_json, append_jsonl
 
 INSTRUCTION = ("Answer the multiple-choice question using the image.\n"
-               "Give a brief explanation in 2–4 numbered lines.\n"
-               "End with exactly: Final answer: <option letter>.")
+               "First give 2–4 short numbered explanation lines, at most 80 words total.\n"
+               "Then end with one final answer line, for example:\n"
+               "Final answer: A\n"
+               "Replace A with the letter of your chosen option. Use an actual option letter, "
+               "not a placeholder. Do not repeat the question or options. Stop after the final letter.")
 
 
 def prompt(row):
     choices = "\n".join(f"{chr(65+i)}. {value}" for i, value in enumerate(row["choices"]))
-    return f"{INSTRUCTION}\n\nQuestion: {row['question']}\n{choices}"
+    return f"Question: {row['question']}\n{choices}\n\n{INSTRUCTION}"
 
 
 def image_key(image):

@@ -25,6 +25,18 @@ def load_scorer(directory):
     return module.GeometryScorer
 
 
+def score_on_head_device(scorer, z, raw, token):
+    """Accelerate may move head inputs after our pre-hook and outputs back again.
+
+    The reused scorer owns a detached weight and center. Align the two vectors
+    with those weights; do not move the vocabulary matrix on every token.
+    """
+    device = scorer.weight.device
+    if device.type == "meta":
+        raise RuntimeError("Geometry scoring requires resident LM-head weights; use a single GPU without disk offload")
+    return scorer.score(z.to(device), raw.to(device), token)
+
+
 @contextmanager
 def capture_head(model):
     state = {}
@@ -56,7 +68,7 @@ class TraceProcessor:
         raw, z = self.state.pop("logits"), self.state.pop("z")
         token = int(scores[0].argmax()) if self.forced is None else self.forced[self.step]
         if token not in self.stop_ids:
-            result = self.scorer.score(z, raw, token)
+            result = score_on_head_device(self.scorer, z, raw, token)
             self.trace.append({"position": self.step, "token_id": token,
                                "scores": {k: float(v) for k, v in result.items()}})
         self.step += 1
@@ -76,6 +88,7 @@ class QwenBackend:
         torch.manual_seed(config["seed"])
         self.processor = AutoProcessor.from_pretrained(config["model"], revision=config["revision"],
             cache_dir=str(root / "huggingface/hub"),
+            use_fast=False,
             min_pixels=config["min_pixels"], max_pixels=config["max_pixels"])
         self.model = Qwen2_5_VLForConditionalGeneration.from_pretrained(config["model"],
             cache_dir=str(root / "huggingface/hub"),
@@ -111,7 +124,8 @@ class QwenBackend:
         stops = set(stops if isinstance(stops, (tuple, list)) else [stops]) - {None}
         if forced is not None and (not forced or any(t in stops for t in forced[:-1])):
             raise ValueError("Forced sequence must be nonempty with EOS only at the end")
-        cuda_devices = list(range(torch.cuda.device_count()))
+        # Do not initialize/synchronize unrelated GPUs on a shared server.
+        cuda_devices = sorted({p.device.index for p in self.model.parameters() if p.device.type == "cuda"})
         for device in cuda_devices:
             torch.cuda.synchronize(device)
             torch.cuda.reset_peak_memory_stats(device)
